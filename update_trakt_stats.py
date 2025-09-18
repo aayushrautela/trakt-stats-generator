@@ -119,7 +119,7 @@ def generate_trakt_svg(trakt_username, access_token):
 
             content_html = f"""
             <a href="https://trakt.tv/users/{trakt_username}/history" style="text-decoration:none;">
-            <div style="background-color: #151515; border-radius: 8px; padding: 16px; border: 1px solid #434343; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items: center; height: {svg_height - 34}px;">
+            <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 2px solid #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items: center; height: {svg_height - 34}px;">
                 <div style="flex-shrink: 0; width: 130px; text-align: center;">
                     <img src="{logo_base64}" alt="Logo" width="120"/>
                 </div>
