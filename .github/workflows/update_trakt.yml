@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  secrets: write
 
 jobs:
   update-trakt:
