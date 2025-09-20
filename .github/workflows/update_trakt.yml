@@ -3,8 +3,11 @@ name: Update Trakt Stats
 on:
   workflow_dispatch:
   schedule:
-    # Runs every 6 hours
     - cron: '0 */6 * * *'
+
+permissions:
+  contents: write
+  secrets: write
 
 jobs:
   update-trakt:
@@ -22,12 +25,20 @@ jobs:
         run: pip install requests
 
       - name: Generate Trakt SVG
+        id: generate_svg
         env:
           TRAKT_USERNAME: ${{ secrets.TRAKT_USERNAME }}
           TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
           TRAKT_CREDENTIALS: ${{ secrets.TRAKT_CREDENTIALS }}
         run: python update_trakt_stats.py
+
+      - name: Update secret if token was refreshed
+        if: steps.generate_svg.outputs.refreshed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh secret set TRAKT_CREDENTIALS --body "$(cat refreshed_credentials.json)"
 
       - name: Commit and push changes
         run: |
