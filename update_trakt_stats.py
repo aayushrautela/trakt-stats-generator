@@ -11,6 +11,7 @@ from datetime import datetime
 #FILE PATHS
 CREDENTIALS_PATH = 'trakt_credentials.json'
 SVG_PATH = 'trakt_stats.svg'
+REFRESHED_CREDENTIALS_PATH = 'refreshed_credentials.json'
 
 #API URLS
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
@@ -44,6 +45,24 @@ def get_trakt_tokens_interactive(client_id, client_secret):
         except requests.exceptions.RequestException as e:
             print(f"Error polling for token: {e}")
             sys.exit(1)
+
+def refresh_trakt_token(credentials):
+    """Refreshes an expired access token and returns the new credentials."""
+    print("Token expired, attempting to refresh...")
+    try:
+        response = requests.post(f"{TRAKT_API_BASE_URL}/oauth/token", json={'refresh_token': credentials['refresh_token'], 'client_id': os.environ.get("TRAKT_CLIENT_ID"), 'client_secret': os.environ.get("TRAKT_CLIENT_SECRET"), 'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob', 'grant_type': 'refresh_token'})
+        response.raise_for_status()
+        new_credentials = response.json()
+        
+        # Save the new credentials to a file so the GitHub Action can update the secret
+        with open(REFRESHED_CREDENTIALS_PATH, 'w') as f:
+            json.dump(new_credentials, f)
+        print(f"Token refreshed. New credentials saved to '{REFRESHED_CREDENTIALS_PATH}'.")
+
+        return new_credentials
+    except requests.exceptions.RequestException as e:
+        print(f"Could not refresh token: {e}.")
+        sys.exit(1)
 
 def save_image_from_url(image_url):
     """Downloads an image from a URL and returns its local path and content type."""
@@ -119,7 +138,7 @@ def generate_trakt_svg(trakt_username, access_token):
 
             content_html = f"""
             <a href="https://trakt.tv/users/{trakt_username}/history" style="text-decoration:none;">
-            <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 1px solid #e4e3e2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items: center; height: {svg_height - 34}px;">
+            <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 2px solid #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items: center; height: {svg_height - 34}px;">
                 <div style="flex-shrink: 0; width: 130px; text-align: center;">
                     <img src="{logo_base64}" alt="Logo" width="120"/>
                 </div>
@@ -152,12 +171,10 @@ def generate_trakt_svg(trakt_username, access_token):
         sys.exit(1)
 
 if __name__ == '__main__':
-    # Check for local authentication mode
     if len(sys.argv) > 1 and sys.argv[1] == 'auth':
         local_client_id = input("Enter your Trakt Client ID: ")
         local_client_secret = input("Enter your Trakt Client Secret: ")
         get_trakt_tokens_interactive(local_client_id, local_client_secret)
-    # Default mode for GitHub Actions
     else:
         TRAKT_USERNAME = os.environ.get("TRAKT_USERNAME")
         TRAKT_CREDENTIALS_JSON = os.environ.get("TRAKT_CREDENTIALS")
@@ -170,8 +187,7 @@ if __name__ == '__main__':
         
         expiry_time = creds.get('created_at', 0) + creds.get('expires_in', 0)
         if time.time() > expiry_time:
-            print("Error: Trakt token has expired. Please re-run with 'auth' argument locally to generate new credentials and update your GitHub secret.")
-            sys.exit(1)
+            creds = refresh_trakt_token(creds)
 
         generate_trakt_svg(TRAKT_USERNAME, creds['access_token'])
 
