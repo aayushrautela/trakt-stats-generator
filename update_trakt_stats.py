@@ -54,10 +54,14 @@ def refresh_trakt_token(credentials):
         response.raise_for_status()
         new_credentials = response.json()
         
-        # Save the new credentials to a file so the GitHub Action can update the secret
         with open(REFRESHED_CREDENTIALS_PATH, 'w') as f:
             json.dump(new_credentials, f)
         print(f"Token refreshed. New credentials saved to '{REFRESHED_CREDENTIALS_PATH}'.")
+
+        # Use the modern, reliable way to set the output for the GitHub Action
+        if "GITHUB_OUTPUT" in os.environ:
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                print("refreshed=true", file=f)
 
         return new_credentials
     except requests.exceptions.RequestException as e:
