@@ -7,7 +7,6 @@ import html
 from flask import Flask, Response, request, redirect, session
 
 app = Flask(__name__)
-# It is important to set a secret key for session management
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a-super-secret-key")
 
 TRAKT_USERNAME = os.environ.get("TRAKT_USERNAME")
@@ -17,13 +16,8 @@ TRAKT_REDIRECT_URI = os.environ.get("TRAKT_REDIRECT_URI")
 
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
 
-# --- New Routes for OAuth 2.0 Flow ---
-
 @app.route('/login')
 def login():
-    """
-    Redirects the user to Trakt's authorization page.
-    """
     auth_url = (
         f"{TRAKT_API_BASE_URL}/oauth/authorize?response_type=code"
         f"&client_id={TRAKT_CLIENT_ID}&redirect_uri={TRAKT_REDIRECT_URI}"
@@ -32,14 +26,10 @@ def login():
 
 @app.route('/oauth/callback')
 def oauth_callback():
-    """
-    Handles the callback from Trakt after the user authorizes the application.
-    """
     code = request.args.get('code')
     if not code:
         return "Error: No authorization code provided.", 400
 
-    # Exchange the authorization code for an access token
     token_url = f"{TRAKT_API_BASE_URL}/oauth/token"
     token_data = {
         'code': code,
@@ -54,7 +44,6 @@ def oauth_callback():
         response.raise_for_status()
         credentials = response.json()
         
-        # Store the credentials securely in the session.
         session['trakt_credentials'] = credentials
         session['trakt_credentials']['created_at'] = time.time()
         
@@ -78,7 +67,6 @@ def refresh_trakt_token(credentials):
         new_credentials = response.json()
         print("Token refreshed successfully.")
         
-        # Update the stored credentials
         session['trakt_credentials'] = new_credentials
         session['trakt_credentials']['created_at'] = time.time()
         
@@ -102,7 +90,6 @@ def image_to_base64(image_url):
 
 def generate_svg(trakt_username, access_token):
     headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID, 'Authorization': f"Bearer {access_token}"}
-    # Using /users/me to get the authenticated user's history
     url = f"{TRAKT_API_BASE_URL}/users/me/history?limit=1&extended=full,images"
     
     try:
@@ -140,7 +127,6 @@ def generate_svg(trakt_username, access_token):
                 logo_url = logo_list[0]
                 logo_base64 = image_to_base64(logo_url)
 
-        # The overall SVG height is still dynamic based on whether there's a tagline
         secondary_line_html = f'<div style="margin-bottom: 12px; font-size: 14px; color: #a9fef7;">{secondary_line}</div>' if secondary_line else ""
         svg_height = 190 if secondary_line else 160
 
@@ -189,7 +175,6 @@ def get_trakt_svg():
              return Response("Failed to refresh Trakt token.", mimetype='text/plain', status=500)
         creds = new_creds
 
-    # Pass the TRAKT_USERNAME to the function for the history link
     svg_data = generate_svg(TRAKT_USERNAME, creds['access_token'])
     
     return Response(svg_data, mimetype='image/svg+xml', headers={
