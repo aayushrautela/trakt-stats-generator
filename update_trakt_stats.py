@@ -13,12 +13,7 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a-super-secret-key")
 TRAKT_USERNAME = os.environ.get("TRAKT_USERNAME")
 TRAKT_CLIENT_ID = os.environ.get("TRAKT_CLIENT_ID")
 TRAKT_CLIENT_SECRET = os.environ.get("TRAKT_CLIENT_SECRET")
-
-# You will need to set this to the callback URL of your application
-# For local testing, you can use something like 'http://127.0.0.1:5000/oauth/callback'
-# For production, it should be the URL of your deployed application
 TRAKT_REDIRECT_URI = os.environ.get("TRAKT_REDIRECT_URI")
-
 
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
 
@@ -59,8 +54,7 @@ def oauth_callback():
         response.raise_for_status()
         credentials = response.json()
         
-        # Store the credentials securely. For a simple app, a session is fine.
-        # For a more robust application, you might want to store this in a database.
+        # Store the credentials securely in the session.
         session['trakt_credentials'] = credentials
         session['trakt_credentials']['created_at'] = time.time()
         
@@ -77,7 +71,7 @@ def refresh_trakt_token(credentials):
             'refresh_token': credentials['refresh_token'],
             'client_id': TRAKT_CLIENT_ID,
             'client_secret': TRAKT_CLIENT_SECRET,
-            'redirect_uri': TRAKT_REDIRECT_URI, # The redirect_uri is also needed for refreshing
+            'redirect_uri': TRAKT_REDIRECT_URI,
             'grant_type': 'refresh_token'
         })
         response.raise_for_status()
@@ -108,7 +102,8 @@ def image_to_base64(image_url):
 
 def generate_svg(trakt_username, access_token):
     headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID, 'Authorization': f"Bearer {access_token}"}
-    url = f"{TRAKT_API_BASE_URL}/users/{trakt_username}/history?limit=1&extended=full,images"
+    # Using /users/me to get the authenticated user's history
+    url = f"{TRAKT_API_BASE_URL}/users/me/history?limit=1&extended=full,images"
     
     try:
         r = requests.get(url, headers=headers)
@@ -145,21 +140,25 @@ def generate_svg(trakt_username, access_token):
                 logo_url = logo_list[0]
                 logo_base64 = image_to_base64(logo_url)
 
-        secondary_line_html = f'<p style="margin: 0 0 12px; font-size: 14px; color: #a9fef7;">{secondary_line}</p>' if secondary_line else ""
+        # The overall SVG height is still dynamic based on whether there's a tagline
+        secondary_line_html = f'<div style="margin-bottom: 12px; font-size: 14px; color: #a9fef7;">{secondary_line}</div>' if secondary_line else ""
         svg_height = 190 if secondary_line else 160
 
         content_html = f"""
         <a href="https://trakt.tv/users/{trakt_username}/history" style="text-decoration:none;">
-        <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 1px solid #e4e3e2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items-center; height: {svg_height - 34}px;">
-            <div style="flex-shrink: 0; width: 130px; text-align: center;">
-                <img src="{logo_base64}" alt="Logo" width="120"/>
+        <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 1px solid #e4e3e2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items: center; height: {svg_height - 34}px;">
+            
+            <div style="flex-shrink: 0; width: 130px; display: flex; align-items: center; justify-content: center;">
+                <img src="{logo_base64}" alt="Logo" width="120" style="max-height: 120px;"/>
             </div>
+
             <div style="flex-grow: 1; padding-left: 12px;">
-                <p style="margin: 0 0 8px; font-size: 12px; color: #888; font-weight: 600;">LATEST WATCH</p>
-                <p style="margin: 0 0 8px; font-size: 18px; font-weight: 600;">{title_line}</p>
+                <div style="margin-bottom: 8px; font-size: 12px; color: #888; font-weight: 600;">LATEST WATCH</div>
+                <div style="margin-bottom: 8px; font-size: 18px; font-weight: 600;">{title_line}</div>
                 {secondary_line_html}
-                <p style="margin: 0; font-size: 12px; color: #888;">{genres}</p>
+                <div style="font-size: 12px; color: #888;">{genres}</div>
             </div>
+
         </div>
         </a>
         """
@@ -178,11 +177,9 @@ def generate_svg(trakt_username, access_token):
 
 @app.route('/api/trakt')
 def get_trakt_svg():
-    # Instead of loading from environment variables, we now get credentials from the session
     creds = session.get('trakt_credentials')
 
     if not creds:
-        # If not authenticated, you can either return an error or redirect to login
         return Response("Not authenticated with Trakt. Please go to /login", mimetype='text/plain', status=401)
     
     expiry_time = creds.get('created_at', 0) + creds.get('expires_in', 0)
@@ -192,6 +189,7 @@ def get_trakt_svg():
              return Response("Failed to refresh Trakt token.", mimetype='text/plain', status=500)
         creds = new_creds
 
+    # Pass the TRAKT_USERNAME to the function for the history link
     svg_data = generate_svg(TRAKT_USERNAME, creds['access_token'])
     
     return Response(svg_data, mimetype='image/svg+xml', headers={
