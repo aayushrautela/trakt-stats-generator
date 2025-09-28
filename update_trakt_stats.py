@@ -4,16 +4,71 @@ import time
 import base64
 import requests
 import html
-from flask import Flask, Response
+from flask import Flask, Response, request, redirect, session
 
 app = Flask(__name__)
+# It is important to set a secret key for session management
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a-super-secret-key")
 
 TRAKT_USERNAME = os.environ.get("TRAKT_USERNAME")
 TRAKT_CLIENT_ID = os.environ.get("TRAKT_CLIENT_ID")
 TRAKT_CLIENT_SECRET = os.environ.get("TRAKT_CLIENT_SECRET")
-TRAKT_CREDENTIALS_JSON = os.environ.get("TRAKT_CREDENTIALS")
+
+# You will need to set this to the callback URL of your application
+# For local testing, you can use something like 'http://127.0.0.1:5000/oauth/callback'
+# For production, it should be the URL of your deployed application
+TRAKT_REDIRECT_URI = os.environ.get("TRAKT_REDIRECT_URI")
+
 
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
+
+# --- New Routes for OAuth 2.0 Flow ---
+
+@app.route('/login')
+def login():
+    """
+    Redirects the user to Trakt's authorization page.
+    """
+    auth_url = (
+        f"{TRAKT_API_BASE_URL}/oauth/authorize?response_type=code"
+        f"&client_id={TRAKT_CLIENT_ID}&redirect_uri={TRAKT_REDIRECT_URI}"
+    )
+    return redirect(auth_url)
+
+@app.route('/oauth/callback')
+def oauth_callback():
+    """
+    Handles the callback from Trakt after the user authorizes the application.
+    """
+    code = request.args.get('code')
+    if not code:
+        return "Error: No authorization code provided.", 400
+
+    # Exchange the authorization code for an access token
+    token_url = f"{TRAKT_API_BASE_URL}/oauth/token"
+    token_data = {
+        'code': code,
+        'client_id': TRAKT_CLIENT_ID,
+        'client_secret': TRAKT_CLIENT_SECRET,
+        'redirect_uri': TRAKT_REDIRECT_URI,
+        'grant_type': 'authorization_code'
+    }
+    
+    try:
+        response = requests.post(token_url, json=token_data)
+        response.raise_for_status()
+        credentials = response.json()
+        
+        # Store the credentials securely. For a simple app, a session is fine.
+        # For a more robust application, you might want to store this in a database.
+        session['trakt_credentials'] = credentials
+        session['trakt_credentials']['created_at'] = time.time()
+        
+        return "Successfully authenticated with Trakt! You can now close this window."
+
+    except requests.exceptions.RequestException as e:
+        return f"Error exchanging code for token: {e}", 500
+
 
 def refresh_trakt_token(credentials):
     print("Token expired, attempting to refresh...")
@@ -22,12 +77,17 @@ def refresh_trakt_token(credentials):
             'refresh_token': credentials['refresh_token'],
             'client_id': TRAKT_CLIENT_ID,
             'client_secret': TRAKT_CLIENT_SECRET,
-            'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob',
+            'redirect_uri': TRAKT_REDIRECT_URI, # The redirect_uri is also needed for refreshing
             'grant_type': 'refresh_token'
         })
         response.raise_for_status()
         new_credentials = response.json()
         print("Token refreshed successfully.")
+        
+        # Update the stored credentials
+        session['trakt_credentials'] = new_credentials
+        session['trakt_credentials']['created_at'] = time.time()
+        
         return new_credentials
     except requests.exceptions.RequestException as e:
         print(f"Could not refresh token: {e}.")
@@ -90,7 +150,7 @@ def generate_svg(trakt_username, access_token):
 
         content_html = f"""
         <a href="https://trakt.tv/users/{trakt_username}/history" style="text-decoration:none;">
-        <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 1px solid #e4e3e2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items: center; height: {svg_height - 34}px;">
+        <div style="background-color: #151515; border-radius: 6px; padding: 16px; border: 1px solid #e4e3e2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; color: #fff; display: flex; align-items-center; height: {svg_height - 34}px;">
             <div style="flex-shrink: 0; width: 130px; text-align: center;">
                 <img src="{logo_base64}" alt="Logo" width="120"/>
             </div>
@@ -118,10 +178,12 @@ def generate_svg(trakt_username, access_token):
 
 @app.route('/api/trakt')
 def get_trakt_svg():
-    if not all([TRAKT_USERNAME, TRAKT_CLIENT_ID, TRAKT_CLIENT_SECRET, TRAKT_CREDENTIALS_JSON]):
-        return Response("Server-side environment variables are not configured.", mimetype='text/plain', status=500)
-    
-    creds = json.loads(TRAKT_CREDENTIALS_JSON)
+    # Instead of loading from environment variables, we now get credentials from the session
+    creds = session.get('trakt_credentials')
+
+    if not creds:
+        # If not authenticated, you can either return an error or redirect to login
+        return Response("Not authenticated with Trakt. Please go to /login", mimetype='text/plain', status=401)
     
     expiry_time = creds.get('created_at', 0) + creds.get('expires_in', 0)
     if time.time() > expiry_time:
@@ -135,4 +197,3 @@ def get_trakt_svg():
     return Response(svg_data, mimetype='image/svg+xml', headers={
         'Cache-Control': 's-maxage=3600, stale-while-revalidate',
     })
-
