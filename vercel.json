@@ -7,7 +7,7 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "/(.*)",
       "dest": "update_trakt_stats.py"
     }
   ]
