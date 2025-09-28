@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "update_trakt_stats.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "update_trakt_stats.py"
+    }
+  ]
+}
