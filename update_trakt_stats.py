@@ -14,6 +14,11 @@ TRAKT_CLIENT_ID = os.environ.get("TRAKT_CLIENT_ID")
 TRAKT_CLIENT_SECRET = os.environ.get("TRAKT_CLIENT_SECRET")
 TRAKT_REDIRECT_URI = os.environ.get("TRAKT_REDIRECT_URI")
 
+# Environment variables for persistent authentication
+TRAKT_ACCESS_TOKEN = os.environ.get("TRAKT_ACCESS_TOKEN")
+TRAKT_REFRESH_TOKEN = os.environ.get("TRAKT_REFRESH_TOKEN")
+TRAKT_TOKEN_EXPIRES_AT = os.environ.get("TRAKT_TOKEN_EXPIRES_AT")
+
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
 
 @app.route('/login')
@@ -47,11 +52,50 @@ def oauth_callback():
         session['trakt_credentials'] = credentials
         session['trakt_credentials']['created_at'] = time.time()
         
-        return "Successfully authenticated with Trakt! You can now close this window."
+        # Display the tokens for you to copy to environment variables
+        expires_at = time.time() + credentials.get('expires_in', 0)
+        return f"""
+        <h2>Authentication Successful!</h2>
+        <p>Copy these values to your Vercel environment variables:</p>
+        <br>
+        <strong>TRAKT_ACCESS_TOKEN:</strong><br>
+        <code>{credentials['access_token']}</code><br><br>
+        <strong>TRAKT_REFRESH_TOKEN:</strong><br>
+        <code>{credentials['refresh_token']}</code><br><br>
+        <strong>TRAKT_TOKEN_EXPIRES_AT:</strong><br>
+        <code>{expires_at}</code><br><br>
+        <p>After setting these environment variables, your public endpoint will work!</p>
+        """
 
     except requests.exceptions.RequestException as e:
         return f"Error exchanging code for token: {e}", 500
 
+def refresh_trakt_token_from_env():
+    """Refresh token using environment variables"""
+    if not TRAKT_REFRESH_TOKEN:
+        return None
+        
+    try:
+        response = requests.post(f"{TRAKT_API_BASE_URL}/oauth/token", json={
+            'refresh_token': TRAKT_REFRESH_TOKEN,
+            'client_id': TRAKT_CLIENT_ID,
+            'client_secret': TRAKT_CLIENT_SECRET,
+            'redirect_uri': TRAKT_REDIRECT_URI,
+            'grant_type': 'refresh_token'
+        })
+        response.raise_for_status()
+        new_credentials = response.json()
+        print("Token refreshed successfully.")
+        
+        # Update session if it exists
+        if 'trakt_credentials' in session:
+            session['trakt_credentials'] = new_credentials
+            session['trakt_credentials']['created_at'] = time.time()
+        
+        return new_credentials
+    except requests.exceptions.RequestException as e:
+        print(f"Could not refresh token: {e}.")
+        return None
 
 def refresh_trakt_token(credentials):
     print("Token expired, attempting to refresh...")
@@ -74,6 +118,36 @@ def refresh_trakt_token(credentials):
     except requests.exceptions.RequestException as e:
         print(f"Could not refresh token: {e}.")
         return None
+
+def get_valid_access_token():
+    """Get a valid access token from environment variables or session"""
+    # First try environment variables
+    if TRAKT_ACCESS_TOKEN and TRAKT_TOKEN_EXPIRES_AT:
+        try:
+            expires_at = float(TRAKT_TOKEN_EXPIRES_AT)
+            if time.time() < expires_at:
+                return TRAKT_ACCESS_TOKEN
+            else:
+                # Token expired, try to refresh
+                new_creds = refresh_trakt_token_from_env()
+                if new_creds:
+                    return new_creds['access_token']
+        except ValueError:
+            pass
+    
+    # Fallback to session-based authentication
+    creds = session.get('trakt_credentials')
+    if not creds:
+        return None
+    
+    expiry_time = creds.get('created_at', 0) + creds.get('expires_in', 0)
+    if time.time() > expiry_time:
+        new_creds = refresh_trakt_token(creds)
+        if not new_creds:
+            return None
+        creds = new_creds
+
+    return creds['access_token']
 
 def image_to_base64(image_url):
     if not image_url: return ""
@@ -180,3 +254,24 @@ def get_trakt_svg():
     return Response(svg_data, mimetype='image/svg+xml', headers={
         'Cache-Control': 's-maxage=3600, stale-while-revalidate',
     })
+
+# Public endpoint for GitHub README
+@app.route('/api/trakt/public')
+def get_trakt_svg_public():
+    """Public endpoint that works without session authentication"""
+    access_token = get_valid_access_token()
+    
+    if not access_token:
+        return Response("No valid Trakt credentials found. Please authenticate first at /login and set environment variables.", mimetype='text/plain', status=401)
+    
+    svg_data = generate_svg(TRAKT_USERNAME, access_token)
+    
+    return Response(svg_data, mimetype='image/svg+xml', headers={
+        'Cache-Control': 's-maxage=3600, stale-while-revalidate',
+        'Access-Control-Allow-Origin': '*',  # Allow cross-origin requests
+    })
+
+# Health check endpoint
+@app.route('/')
+def health_check():
+    return "Trakt Stats Generator is running!"
