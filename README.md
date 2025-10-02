@@ -2,6 +2,8 @@
 
 This project creates a neat SVG image showing the last movie or TV show you watched on Trakt. It's designed to be easily embedded in your GitHub profile README to share what you're currently watching with everyone.
 
+ ![My Trakt Stats](https://trakt-stats-generator.vercel.app/api/trakt/public)
+
 ## How It Works
 
 This is a small web application that connects to the Trakt.tv API using your account. It fetches your most recent watch history and then generates a dynamic SVG image card that displays the show or movie's logo, title, and other details.
@@ -64,7 +66,9 @@ After authorization, you will be redirected back to a page on your app that disp
 
 You're all set! Your public stats URL is now active. To add it to your GitHub profile, just copy and paste the following markdown into your README file.
 
-Make sure to replace the URL with your own Vercel app URL.
+ e.g., `https://your-app-name.vercel.app/api/trakt/public`
+* Make sure to replace the URL with your own Vercel app URL.
+
 And that's it! Your latest watched item from Trakt will now show up on your profile.
 
 ## License
