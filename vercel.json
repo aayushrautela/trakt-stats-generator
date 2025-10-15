@@ -10,5 +10,11 @@
       "src": "/(.*)",
       "dest": "update_trakt_stats.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/refresh-token",
+      "schedule": "0 0 */2 * *"
+    }
   ]
 }
