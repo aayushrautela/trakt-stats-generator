@@ -18,8 +18,13 @@ TRAKT_REDIRECT_URI = os.environ.get("TRAKT_REDIRECT_URI")
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
 
 # Initialize Redis client
+redis_url = os.environ.get("REDIS_URL")
+if redis_url and redis_url.startswith("rediss://"):
+    # Convert rediss:// to https:// for Upstash REST API
+    redis_url = redis_url.replace("rediss://", "https://")
+
 redis = Redis(
-    url=os.environ.get("REDIS_URL"),
+    url=redis_url,
     token=os.environ.get("KV_REST_API_TOKEN")
 )
 
