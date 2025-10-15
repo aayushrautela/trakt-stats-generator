@@ -5,7 +5,7 @@ import base64
 import requests
 import html
 from flask import Flask, Response, request, redirect, session
-from upstash_redis import Redis
+import redis
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a-super-secret-key")
@@ -18,34 +18,30 @@ TRAKT_REDIRECT_URI = os.environ.get("TRAKT_REDIRECT_URI")
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
 
 # Initialize Redis client
-redis_url = os.environ.get("REDIS_URL")
-if redis_url and redis_url.startswith("rediss://"):
-    # Convert rediss:// to https:// for Upstash REST API
-    redis_url = redis_url.replace("rediss://", "https://")
-
-redis = Redis(
-    url=redis_url,
-    token=os.environ.get("KV_REST_API_TOKEN")
+redis_client = redis.from_url(
+    os.environ.get("REDIS_URL"),
+    password=os.environ.get("KV_REST_API_TOKEN"),
+    ssl=True
 )
 
 # Redis storage functions
 def get_tokens_from_redis():
-    """Get tokens from Upstash Redis"""
+    """Get tokens from Redis"""
     try:
-        tokens_json = redis.get("trakt_tokens")
+        tokens_json = redis_client.get("trakt_tokens")
         return json.loads(tokens_json) if tokens_json else None
     except Exception as e:
         print(f"Error getting tokens from Redis: {e}")
         return None
 
 def save_tokens_to_redis(tokens):
-    """Save tokens to Upstash Redis"""
+    """Save tokens to Redis"""
     try:
         # Add metadata
         tokens['saved_at'] = time.time()
         tokens['expires_at'] = time.time() + tokens.get('expires_in', 0)
         
-        redis.set("trakt_tokens", json.dumps(tokens))
+        redis_client.set("trakt_tokens", json.dumps(tokens))
         print("Tokens saved to Redis successfully")
         return True
     except Exception as e:
