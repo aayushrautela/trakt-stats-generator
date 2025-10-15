@@ -19,8 +19,8 @@ TRAKT_API_BASE_URL = "https://api.trakt.tv"
 
 # Initialize Redis client
 redis = Redis(
-    url=os.environ.get("UPSTASH_REDIS_REST_URL"),
-    token=os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+    url=os.environ.get("REDIS_URL"),
+    token=os.environ.get("KV_REST_API_TOKEN")
 )
 
 # Redis storage functions
